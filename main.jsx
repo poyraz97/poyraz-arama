@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { 
@@ -20,7 +21,7 @@ import {
   Users 
 } from 'lucide-react';
 
-// Firebase Bilgilerin
+// Firebase Yapılandırması (Senin proje bilgilerin)
 const firebaseConfig = {
   apiKey: "AIzaSyCgw5ip7yWYo4yxwgI7n1nV0bpId6CqRc8",
   authDomain: "poyraz-arama.firebaseapp.com",
@@ -30,6 +31,7 @@ const firebaseConfig = {
   appId: "1:302327435109:web:e3690705e41873fdb35b8c"
 };
 
+// Firebase başlatma
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -39,7 +41,7 @@ const servers = {
   iceCandidatePoolSize: 10,
 };
 
-export default function App() {
+const App = () => {
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState('');
   const [roomName, setRoomName] = useState('');
@@ -71,7 +73,7 @@ export default function App() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       return stream;
     } catch (err) {
-      setError("Kamera/Mikrofon izni alınamadı.");
+      setError("Kamera veya mikrofon izni alınamadı.");
       throw err;
     }
   };
@@ -79,20 +81,23 @@ export default function App() {
   const createPeerConnection = (remoteUid, remoteName) => {
     const pc = new RTCPeerConnection(servers);
     peerConnections.current[remoteUid] = pc;
+    
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => pc.addTrack(track, localStream.current));
     }
+    
     pc.ontrack = (event) => {
       setRemoteParticipants(prev => ({
         ...prev,
         [remoteUid]: { stream: event.streams[0], name: remoteName }
       }));
     };
+    
     return pc;
   };
 
   const startMeeting = async () => {
-    if (!roomName || !displayName) return;
+    if (!roomName || !displayName || !user) return;
     try {
       setIsInCall(true);
       await setupLocalMedia();
@@ -133,6 +138,7 @@ export default function App() {
   const handleSignal = async (data) => {
     const { from, type, sdp, candidate, senderName } = data;
     let pc = peerConnections.current[from] || createPeerConnection(from, senderName);
+    
     if (type === 'offer') {
       await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
       const answer = await pc.createAnswer();
@@ -162,7 +168,7 @@ export default function App() {
         {error && <div className="bg-red-500/20 text-red-500 p-3 rounded-lg mb-4 text-sm">{error}</div>}
         {!isInCall ? (
           <div className="bg-zinc-900 p-8 rounded-3xl w-full max-w-sm border border-white/5 shadow-2xl">
-            <h2 className="text-2xl font-bold mb-6 text-center">Giriş Yap</h2>
+            <h2 className="text-2xl font-bold mb-6 text-center text-blue-400">Giriş Yap</h2>
             <input 
               className="w-full bg-black border border-white/10 p-4 rounded-xl mb-4 focus:border-blue-500 outline-none"
               placeholder="Adınız" value={displayName} onChange={e => setDisplayName(e.target.value)}
@@ -183,11 +189,40 @@ export default function App() {
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
               <video ref={localVideoRef} autoPlay playsInline muted className="w-full bg-zinc-900 rounded-2xl border border-blue-500/50 aspect-video object-cover" />
               {Object.entries(remoteParticipants).map(([uid, p]) => (
-                <video key={uid} autoPlay playsInline ref={el => { if(el) el.srcObject = p.stream }} className="w-full bg-zinc-900 rounded-2xl border border-white/10 aspect-video object-cover" />
+                <div key={uid} className="relative">
+                  <video autoPlay playsInline ref={el => { if(el) el.srcObject = p.stream }} className="w-full bg-zinc-900 rounded-2xl border border-white/10 aspect-video object-cover" />
+                  <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">{p.name}</div>
+                </div>
               ))}
             </div>
-            <div className="flex justify-center gap-4 p-4">
-              <button onClick={() => window.location.reload()} className="bg-red-600 p-4 rounded-full"><PhoneOff /></button>
+            <div className="flex justify-center gap-4 p-4 bg-zinc-900/50 rounded-full w-fit mx-auto backdrop-blur-md border border-white/5">
+              <button 
+                onClick={() => {
+                  if (localStream.current) {
+                    const audio = localStream.current.getAudioTracks()[0];
+                    audio.enabled = !audio.enabled;
+                    setIsMicOn(audio.enabled);
+                  }
+                }}
+                className={`p-4 rounded-full transition-colors ${isMicOn ? 'bg-zinc-800' : 'bg-red-500'}`}
+              >
+                {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
+              </button>
+              <button 
+                onClick={() => {
+                  if (localStream.current) {
+                    const video = localStream.current.getVideoTracks()[0];
+                    video.enabled = !video.enabled;
+                    setIsCameraOn(video.enabled);
+                  }
+                }}
+                className={`p-4 rounded-full transition-colors ${isCameraOn ? 'bg-zinc-800' : 'bg-red-500'}`}
+              >
+                {isCameraOn ? <Camera size={24} /> : <CameraOff size={24} />}
+              </button>
+              <button onClick={() => window.location.reload()} className="bg-red-600 p-4 rounded-full hover:bg-red-500 transition-colors">
+                <PhoneOff size={24} />
+              </button>
             </div>
           </div>
         )}
@@ -195,3 +230,10 @@ export default function App() {
     </div>
   );
 }
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
