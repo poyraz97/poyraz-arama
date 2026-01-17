@@ -16,7 +16,9 @@ import {
   Camera, 
   CameraOff, 
   PhoneOff, 
-  Wind 
+  Wind,
+  User,
+  Users
 } from 'lucide-react';
 
 // Firebase Yapılandırması
@@ -29,9 +31,11 @@ const firebaseConfig = {
   appId: "1:302327435109:web:e3690705e41873fdb35b8c"
 };
 
+// Uygulama Başlatma
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const APP_ID = "poyraz-arama";
 
 const servers = {
   iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }],
@@ -52,10 +56,13 @@ function App() {
   const localStream = useRef(null);
   const peerConnections = useRef({}); 
 
+  // Auth Takibi
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       if (!u) {
-        signInAnonymously(auth).catch(err => setError("Giriş hatası: " + err.message));
+        signInAnonymously(auth).catch(err => {
+          setError("Bağlantı Hatası: " + err.message);
+        });
       } else {
         setUser(u);
       }
@@ -70,7 +77,7 @@ function App() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       return stream;
     } catch (err) {
-      setError("Kamera/Mikrofon izni alınamadı.");
+      setError("Kamera/Mikrofon erişimi engellendi.");
       throw err;
     }
   };
@@ -78,15 +85,18 @@ function App() {
   const createPeerConnection = (remoteUid, remoteName) => {
     const pc = new RTCPeerConnection(servers);
     peerConnections.current[remoteUid] = pc;
+    
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => pc.addTrack(track, localStream.current));
     }
+    
     pc.ontrack = (event) => {
       setRemoteParticipants(prev => ({
         ...prev,
         [remoteUid]: { stream: event.streams[0], name: remoteName }
       }));
     };
+    
     return pc;
   };
 
@@ -95,11 +105,14 @@ function App() {
     try {
       setIsInCall(true);
       await setupLocalMedia();
-      const roomRef = doc(db, 'rooms', roomName);
-      const userRef = doc(collection(roomRef, 'participants'), user.uid);
+      
+      const roomPath = `artifacts/${APP_ID}/public/data/rooms/${roomName}`;
+      const userRef = doc(db, `${roomPath}/participants/${user.uid}`);
+      
       await setDoc(userRef, { uid: user.uid, name: displayName, joinedAt: Date.now() });
 
-      onSnapshot(collection(roomRef, 'participants'), (snapshot) => {
+      // Katılımcı İzleme
+      onSnapshot(collection(db, `${roomPath}/participants`), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added' && change.doc.id !== user.uid) {
             const pData = change.doc.data();
@@ -108,11 +121,13 @@ function App() {
         });
       });
 
-      onSnapshot(collection(userRef, 'signals'), (snapshot) => {
+      // Sinyal İzleme
+      onSnapshot(collection(db, `${roomPath}/participants/${user.uid}/signals`), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added') handleSignal(change.doc.data());
         });
       });
+      
     } catch (err) {
       setIsInCall(false);
       setError(err.message);
@@ -132,56 +147,127 @@ function App() {
   const handleSignal = async (data) => {
     const { from, type, sdp, candidate, senderName } = data;
     let pc = peerConnections.current[from] || createPeerConnection(from, senderName);
-    if (type === 'offer') {
-      await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      sendSignal(from, { type: 'answer', sdp: answer.sdp, senderName: displayName });
-    } else if (type === 'answer') {
-      await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-    } else if (type === 'ice' && candidate) {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    
+    try {
+      if (type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal(from, { type: 'answer', sdp: answer.sdp, senderName: displayName });
+      } else if (type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+      } else if (type === 'ice' && candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    } catch (e) {
+      console.error("Signal error:", e);
     }
   };
 
   const sendSignal = async (toUid, payload) => {
-    await addDoc(collection(db, 'rooms', roomName, 'participants', toUid, 'signals'), {
+    const signalPath = `artifacts/${APP_ID}/public/data/rooms/${roomName}/participants/${toUid}/signals`;
+    await addDoc(collection(db, signalPath), {
       ...payload, from: user.uid, timestamp: Date.now()
     });
   };
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col font-sans">
-      <nav className="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-900">
-        <div className="flex items-center gap-2 text-blue-500 font-bold italic">
-          <Wind /> POYRAZ ARAMA
+      <nav className="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-900 sticky top-0 z-50">
+        <div className="flex items-center gap-2 text-blue-500 font-bold italic tracking-tighter">
+          <Wind className="w-6 h-6" /> POYRAZ ARAMA
         </div>
       </nav>
+      
       <main className="flex-1 flex flex-col p-4 justify-center items-center">
-        {error && <div className="bg-red-600 p-2 rounded mb-4 text-xs">{error}</div>}
+        {error && (
+          <div className="bg-red-500/20 text-red-500 p-3 rounded-xl mb-4 text-xs border border-red-500/50 max-w-sm w-full text-center">
+            {error}
+          </div>
+        )}
+        
         {!isInCall ? (
-          <div className="bg-zinc-900 p-8 rounded-3xl w-full max-w-sm border border-white/5 shadow-2xl">
-            <h2 className="text-xl font-bold mb-4 text-blue-400">Giriş</h2>
-            <input className="w-full bg-black border border-white/10 p-3 rounded-xl mb-3 outline-none" placeholder="Adınız" value={displayName} onChange={e => setDisplayName(e.target.value)} />
-            <input className="w-full bg-black border border-white/10 p-3 rounded-xl mb-4 outline-none" placeholder="Oda Adı" value={roomName} onChange={e => setRoomName(e.target.value.toLowerCase())} />
-            <button onClick={startMeeting} className="w-full bg-blue-600 p-3 rounded-xl font-bold">Giriş Yap</button>
+          <div className="bg-zinc-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/5 shadow-2xl">
+            <h2 className="text-3xl font-black mb-8 text-center text-blue-500 italic tracking-widest">POYRAZ</h2>
+            <div className="space-y-4">
+              <div className="relative">
+                <User className="absolute left-4 top-4 text-zinc-500 w-5 h-5" />
+                <input 
+                  className="w-full bg-black border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition-all" 
+                  placeholder="Adınız" 
+                  value={displayName} 
+                  onChange={e => setDisplayName(e.target.value)} 
+                />
+              </div>
+              <div className="relative">
+                <Users className="absolute left-4 top-4 text-zinc-500 w-5 h-5" />
+                <input 
+                  className="w-full bg-black border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition-all" 
+                  placeholder="Oda İsmi" 
+                  value={roomName} 
+                  onChange={e => setRoomName(e.target.value.toLowerCase().replace(/\s/g, '-'))} 
+                />
+              </div>
+              <button 
+                onClick={startMeeting} 
+                disabled={!user || !displayName || !roomName}
+                className="w-full bg-blue-600 p-4 rounded-2xl font-black hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-30 mt-2"
+              >
+                GÖRÜŞMEYİ BAŞLAT
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="w-full max-w-5xl flex flex-col gap-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <video ref={localVideoRef} autoPlay playsInline muted className="w-full bg-zinc-900 rounded-2xl border border-blue-500/50 aspect-video object-cover" />
+          <div className="w-full max-w-6xl flex flex-col gap-4 h-[calc(100vh-140px)]">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-2">
+              <div className="relative aspect-video group shadow-2xl">
+                <video 
+                  ref={localVideoRef} 
+                  autoPlay 
+                  playsInline 
+                  muted 
+                  className="w-full h-full bg-zinc-900 rounded-3xl border border-blue-600 object-cover scale-x-[-1]" 
+                />
+                <div className="absolute bottom-4 left-4 bg-blue-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                  SİZ ({displayName})
+                </div>
+              </div>
+              
               {Object.entries(remoteParticipants).map(([uid, p]) => (
-                <video key={uid} autoPlay playsInline ref={el => { if(el) el.srcObject = p.stream }} className="w-full bg-zinc-900 rounded-2xl border border-white/10 aspect-video object-cover" />
+                <div key={uid} className="relative aspect-video shadow-2xl">
+                  <video 
+                    autoPlay 
+                    playsInline 
+                    ref={el => { if(el) el.srcObject = p.stream }} 
+                    className="w-full h-full bg-zinc-900 rounded-3xl border border-white/10 object-cover" 
+                  />
+                  <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/10">
+                    {p.name}
+                  </div>
+                </div>
               ))}
             </div>
-            <div className="flex justify-center gap-4 p-4 bg-zinc-900 rounded-full w-fit mx-auto">
-              <button onClick={() => { if(localStream.current) { const a = localStream.current.getAudioTracks()[0]; a.enabled = !a.enabled; setIsMicOn(a.enabled); } }} className={`p-4 rounded-full ${isMicOn ? 'bg-zinc-800' : 'bg-red-600'}`}>
-                {isMicOn ? <Mic size={20}/> : <MicOff size={20}/>}
+            
+            <div className="flex justify-center gap-6 p-5 bg-zinc-900/90 backdrop-blur-2xl rounded-3xl w-fit mx-auto border border-white/10 shadow-2xl mb-4">
+              <button 
+                onClick={() => { if(localStream.current) { const a = localStream.current.getAudioTracks()[0]; a.enabled = !a.enabled; setIsMicOn(a.enabled); } }} 
+                className={`p-4 rounded-2xl transition-all ${isMicOn ? 'bg-zinc-800' : 'bg-red-600'}`}
+              >
+                {isMicOn ? <Mic size={24}/> : <MicOff size={24}/>}
               </button>
-              <button onClick={() => { if(localStream.current) { const v = localStream.current.getVideoTracks()[0]; v.enabled = !v.enabled; setIsCameraOn(v.enabled); } }} className={`p-4 rounded-full ${isCameraOn ? 'bg-zinc-800' : 'bg-red-600'}`}>
-                {isCameraOn ? <Camera size={20}/> : <CameraOff size={20}/>}
+              <button 
+                onClick={() => { if(localStream.current) { const v = localStream.current.getVideoTracks()[0]; v.enabled = !v.enabled; setIsCameraOn(v.enabled); } }} 
+                className={`p-4 rounded-2xl transition-all ${isCameraOn ? 'bg-zinc-800' : 'bg-red-600'}`}
+              >
+                {isCameraOn ? <Camera size={24}/> : <CameraOff size={24}/>}
               </button>
-              <button onClick={() => window.location.reload()} className="bg-red-600 p-4 rounded-full"><PhoneOff size={20}/></button>
+              <div className="w-px h-10 bg-white/10 mx-2" />
+              <button 
+                onClick={() => window.location.reload()} 
+                className="bg-red-600 p-4 rounded-2xl hover:bg-red-500 transition-all px-10"
+              >
+                <PhoneOff size={24}/>
+              </button>
             </div>
           </div>
         )}
@@ -190,5 +276,8 @@ function App() {
   );
 }
 
-const root = createRoot(document.getElementById('root'));
-root.render(<App />);
+// Uygulamayı güvenli render et
+const container = document.getElementById('root');
+if (container) {
+  createRoot(container).render(<App />);
+}
