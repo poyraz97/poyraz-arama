@@ -21,7 +21,9 @@ import {
   Users
 } from 'lucide-react';
 
-// Firebase Yapılandırması
+/**
+ * FIREBASE YAPILANDIRMASI
+ */
 const firebaseConfig = {
   apiKey: "AIzaSyCgw5ip7yWYo4yxwgI7n1nV0bpId6CqRc8",
   authDomain: "poyraz-arama.firebaseapp.com",
@@ -31,7 +33,7 @@ const firebaseConfig = {
   appId: "1:302327435109:web:e3690705e41873fdb35b8c"
 };
 
-// Uygulama Başlatma
+// Uygulama Başlatma (Hata payını azaltmak için globalde başlatıyoruz)
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
@@ -56,7 +58,7 @@ function App() {
   const localStream = useRef(null);
   const peerConnections = useRef({}); 
 
-  // Auth Takibi
+  // Firebase Anonim Giriş Takibi
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -70,6 +72,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  // Kamera ve Mikrofon Kurulumu
   const setupLocalMedia = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -77,11 +80,12 @@ function App() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       return stream;
     } catch (err) {
-      setError("Kamera/Mikrofon erişimi engellendi.");
+      setError("Kamera veya Mikrofon izni alınamadı. Lütfen tarayıcı ayarlarını kontrol edin.");
       throw err;
     }
   };
 
+  // WebRTC Peer Connection Oluşturma
   const createPeerConnection = (remoteUid, remoteName) => {
     const pc = new RTCPeerConnection(servers);
     peerConnections.current[remoteUid] = pc;
@@ -100,6 +104,7 @@ function App() {
     return pc;
   };
 
+  // Görüşmeyi Başlatma
   const startMeeting = async () => {
     if (!roomName || !displayName || !user) return;
     try {
@@ -111,7 +116,7 @@ function App() {
       
       await setDoc(userRef, { uid: user.uid, name: displayName, joinedAt: Date.now() });
 
-      // Katılımcı İzleme
+      // Katılımcıları İzle (Yeni biri gelirse bağlan)
       onSnapshot(collection(db, `${roomPath}/participants`), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added' && change.doc.id !== user.uid) {
@@ -121,7 +126,7 @@ function App() {
         });
       });
 
-      // Sinyal İzleme
+      // Gelen Sinyalleri İzle
       onSnapshot(collection(db, `${roomPath}/participants/${user.uid}/signals`), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
           if (change.type === 'added') handleSignal(change.doc.data());
@@ -160,7 +165,7 @@ function App() {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       }
     } catch (e) {
-      console.error("Signal error:", e);
+      console.error("Sinyal hatası:", e);
     }
   };
 
@@ -181,14 +186,14 @@ function App() {
       
       <main className="flex-1 flex flex-col p-4 justify-center items-center">
         {error && (
-          <div className="bg-red-500/20 text-red-500 p-3 rounded-xl mb-4 text-xs border border-red-500/50 max-w-sm w-full text-center">
+          <div className="bg-red-500/20 text-red-500 p-4 rounded-2xl mb-4 text-sm border border-red-500/50 max-w-sm w-full text-center">
             {error}
           </div>
         )}
         
         {!isInCall ? (
           <div className="bg-zinc-900 p-8 rounded-[2.5rem] w-full max-w-sm border border-white/5 shadow-2xl">
-            <h2 className="text-3xl font-black mb-8 text-center text-blue-500 italic tracking-widest">POYRAZ</h2>
+            <h2 className="text-3xl font-black mb-8 text-center text-blue-500 italic tracking-widest uppercase">Poyraz</h2>
             <div className="space-y-4">
               <div className="relative">
                 <User className="absolute left-4 top-4 text-zinc-500 w-5 h-5" />
@@ -203,7 +208,7 @@ function App() {
                 <Users className="absolute left-4 top-4 text-zinc-500 w-5 h-5" />
                 <input 
                   className="w-full bg-black border border-white/10 p-4 pl-12 rounded-2xl outline-none focus:border-blue-500 transition-all" 
-                  placeholder="Oda İsmi" 
+                  placeholder="Oda Adı" 
                   value={roomName} 
                   onChange={e => setRoomName(e.target.value.toLowerCase().replace(/\s/g, '-'))} 
                 />
@@ -220,13 +225,13 @@ function App() {
         ) : (
           <div className="w-full max-w-6xl flex flex-col gap-4 h-[calc(100vh-140px)]">
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto p-2">
-              <div className="relative aspect-video group shadow-2xl">
+              <div className="relative aspect-video shadow-2xl overflow-hidden rounded-3xl border border-blue-600">
                 <video 
                   ref={localVideoRef} 
                   autoPlay 
                   playsInline 
                   muted 
-                  className="w-full h-full bg-zinc-900 rounded-3xl border border-blue-600 object-cover scale-x-[-1]" 
+                  className="w-full h-full bg-zinc-900 object-cover scale-x-[-1]" 
                 />
                 <div className="absolute bottom-4 left-4 bg-blue-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
                   SİZ ({displayName})
@@ -234,12 +239,12 @@ function App() {
               </div>
               
               {Object.entries(remoteParticipants).map(([uid, p]) => (
-                <div key={uid} className="relative aspect-video shadow-2xl">
+                <div key={uid} className="relative aspect-video shadow-2xl overflow-hidden rounded-3xl border border-white/10">
                   <video 
                     autoPlay 
                     playsInline 
                     ref={el => { if(el) el.srcObject = p.stream }} 
-                    className="w-full h-full bg-zinc-900 rounded-3xl border border-white/10 object-cover" 
+                    className="w-full h-full bg-zinc-900 object-cover" 
                   />
                   <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/10">
                     {p.name}
@@ -276,8 +281,9 @@ function App() {
   );
 }
 
-// Uygulamayı güvenli render et
+// Uygulamanın en altına render işlemini ekliyoruz
 const container = document.getElementById('root');
 if (container) {
-  createRoot(container).render(<App />);
+  const root = createRoot(container);
+  root.render(<App />);
 }
