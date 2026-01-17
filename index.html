@@ -1,13 +1,174 @@
 <!DOCTYPE html>
-<html lang="tr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <title>Poyraz Arama</title>
-  </head>
-  <body style="background-color: #000; margin: 0; overflow: hidden;">
-    <div id="root"></div>
-    <script type="module" src="/main.jsx"></script>
-  </body>
-</html>
+
+<html lang="tr"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Poyraz Görüntülü Sohbet</title> <script src="https://cdn.tailwindcss.com"></script> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"> <style> @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Inter:wght@300;400;700&display=swap'); body { font-family: 'Inter', sans-serif; background: #050505; color: #fff; margin: 0; overflow: hidden; } .poyraz-font { font-family: 'Orbitron', sans-serif; } .glass { background: rgba(15, 15, 15, 0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); } .input-style { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; outline: none; transition: 0.3s; } .input-style:focus { border-color: #2563eb; background: rgba(37, 99, 235, 0.1); } .video-box { transform: scaleX(-1); border-radius: 1.5rem; background: #000; border: 2px solid #1e40af; } #auth-screen, #room-screen, #call-screen { display: none; min-height: 100vh; width: 100%; } .active { display: flex !important; } </style> </head> <body>
+
+<div id="toast" class="fixed top-5 right-5 z-[2000] translate-x-[150%] transition-transform duration-500 glass p-4 rounded-xl border-l-4 border-blue-600 hidden">
+    <p id="toast-msg" class="text-sm font-bold"></p>
+</div>
+
+<!-- GİRİŞ EKRANI -->
+<div id="auth-screen" class="items-center justify-center p-6 flex-col">
+    <div class="w-full max-w-md glass p-10 rounded-[40px] shadow-2xl">
+        <div class="text-center mb-8">
+            <h1 class="poyraz-font text-3xl font-black italic text-blue-600">POYRAZ</h1>
+            <p id="auth-title" class="text-xs font-bold uppercase tracking-widest mt-2">Giriş Yap</p>
+        </div>
+        <div class="space-y-4">
+            <div id="name-field" class="hidden">
+                <input id="reg-name" type="text" placeholder="Rumuz/Adınız" class="w-full input-style p-4 rounded-2xl text-sm">
+            </div>
+            <div id="login-fields">
+                <input id="email" type="email" placeholder="E-posta" class="w-full input-style p-4 rounded-2xl text-sm mb-4">
+                <input id="pass" type="password" placeholder="Şifre" class="w-full input-style p-4 rounded-2xl text-sm">
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="checkbox" id="remember" class="w-4 h-4 accent-blue-600">
+                <label for="remember" class="text-xs text-zinc-400">Beni Hatırla</label>
+            </div>
+            <button id="main-btn" class="w-full bg-blue-600 hover:bg-blue-700 py-4 rounded-2xl font-bold uppercase text-xs">Devam Et</button>
+            <div class="grid grid-cols-2 gap-3 mt-4">
+                <button id="google-btn" class="bg-white text-black py-3 rounded-xl font-bold text-[10px] uppercase">Google</button>
+                <button id="anon-btn" class="bg-zinc-800 text-white py-3 rounded-xl font-bold text-[10px] uppercase">Anonim</button>
+            </div>
+            <p id="toggle-text" class="text-center text-zinc-500 text-xs cursor-pointer mt-4 underline">Hesabın yok mu? Kaydol</p>
+        </div>
+    </div>
+</div>
+
+<!-- ODA EKRANI -->
+<div id="room-screen" class="flex-col items-center justify-center p-6">
+    <div class="w-full max-w-sm glass p-10 rounded-[40px] text-center">
+        <div id="user-info" class="text-[10px] text-blue-500 font-bold mb-4 uppercase"></div>
+        <h2 class="poyraz-font text-xl mb-6">ODA KODU GİR</h2>
+        <input id="room-id" type="text" placeholder="ODA ADI" class="w-full bg-black border border-zinc-800 p-5 rounded-2xl text-center text-xl font-bold uppercase mb-6">
+        <button id="join-btn" class="w-full bg-blue-600 py-4 rounded-2xl font-bold">GÖRÜŞMEYİ BAŞLAT</button>
+        <button id="logout" class="mt-8 text-zinc-600 text-xs uppercase">Çıkış Yap</button>
+    </div>
+</div>
+
+<!-- GÖRÜŞME EKRANI -->
+<div id="call-screen" class="flex-col md:flex-row h-screen">
+    <div class="flex-1 p-4 flex flex-col items-center justify-center relative bg-black">
+        <video id="v-local" autoplay playsinline class="video-box w-full h-full max-w-5xl"></video>
+        <div class="absolute bottom-10 flex gap-4 bg-black/50 p-4 rounded-3xl">
+            <button id="m-mic" class="w-12 h-12 bg-zinc-800 rounded-xl text-blue-500"><i class="fas fa-microphone"></i></button>
+            <button id="m-cam" class="w-12 h-12 bg-zinc-800 rounded-xl text-blue-500"><i class="fas fa-video"></i></button>
+            <button id="m-end" class="w-12 h-12 bg-red-600 rounded-xl text-white"><i class="fas fa-phone-slash"></i></button>
+        </div>
+    </div>
+    <div class="w-full md:w-[350px] bg-[#0a0a0a] border-l border-white/5 flex flex-col">
+        <div id="chat-msgs" class="flex-1 p-6 overflow-y-auto space-y-4"></div>
+        <form id="chat-form" class="p-4 border-t border-white/5">
+            <input id="chat-in" type="text" placeholder="Mesaj yaz..." class="w-full bg-zinc-900 p-4 rounded-xl text-sm outline-none text-white">
+        </form>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js)";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInWithPopup, GoogleAuthProvider, signInAnonymously, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js)";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, limit } from "[https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js](https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js)";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCgw5ip7yWYo4yxwgI7n1nV0bpId6CqRc8",
+        authDomain: "poyraz-arama.firebaseapp.com",
+        projectId: "poyraz-arama",
+        storageBucket: "poyraz-arama.firebasestorage.app",
+        messagingSenderId: "302327435109",
+        appId: "1:302327435109:web:e3690705e41873fdb35b8c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const gProv = new GoogleAuthProvider();
+
+    let user = null, mode = 'login', stream = null;
+
+    const toast = (m) => {
+        const t = document.getElementById('toast');
+        document.getElementById('toast-msg').innerText = m;
+        t.classList.remove('hidden');
+        setTimeout(() => t.classList.remove('translate-x-[150%]'), 10);
+        setTimeout(() => t.classList.add('translate-x-[150%]'), 3000);
+    };
+
+    const setV = (id) => {
+        document.querySelectorAll('#auth-screen, #room-screen, #call-screen').forEach(e => e.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    };
+
+    onAuthStateChanged(auth, (u) => {
+        user = u;
+        if (u) {
+            document.getElementById('user-info').innerText = u.displayName || "Kullanıcı";
+            setV('room-screen');
+        } else setV('auth-screen');
+    });
+
+    document.getElementById('toggle-text').onclick = () => {
+        mode = (mode === 'login' ? 'signup' : 'login');
+        document.getElementById('name-field').classList.toggle('hidden', mode === 'login');
+        document.getElementById('auth-title').innerText = (mode === 'login' ? 'Giriş Yap' : 'Kayıt Ol');
+        document.getElementById('toggle-text').innerText = (mode === 'login' ? 'Hesabın yok mu? Kaydol' : 'Hesabın var mı? Giriş yap');
+    };
+
+    document.getElementById('anon-btn').onclick = () => {
+        mode = 'anon';
+        document.getElementById('name-field').classList.remove('hidden');
+        document.getElementById('login-fields').classList.add('hidden');
+        document.getElementById('auth-title').innerText = 'Anonim Giriş';
+    };
+
+    document.getElementById('main-btn').onclick = async () => {
+        const e = document.getElementById('email').value, p = document.getElementById('pass').value, n = document.getElementById('reg-name').value;
+        const rem = document.getElementById('remember').checked;
+        try {
+            await setPersistence(auth, rem ? browserLocalPersistence : browserSessionPersistence);
+            if (mode === 'signup') {
+                const res = await createUserWithEmailAndPassword(auth, e, p);
+                await updateProfile(res.user, { displayName: n });
+            } else if (mode === 'login') await signInWithEmailAndPassword(auth, e, p);
+            else if (mode === 'anon') {
+                const res = await signInAnonymously(auth);
+                await updateProfile(res.user, { displayName: n + " (A)" });
+            }
+        } catch (err) { toast(err.message); }
+    };
+
+    document.getElementById('google-btn').onclick = () => signInWithPopup(auth, gProv);
+    document.getElementById('logout').onclick = () => signOut(auth);
+
+    document.getElementById('join-btn').onclick = async () => {
+        const r = document.getElementById('room-id').value.toUpperCase();
+        if (!r) return;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('v-local').srcObject = stream;
+            setV('call-screen');
+            const qMsg = query(collection(db, 'artifacts', 'poyraz-arama', 'public', 'data', 'rooms', r, 'messages'), orderBy('timestamp', 'asc'), limit(50));
+            onSnapshot(qMsg, (s) => {
+                const box = document.getElementById('chat-msgs');
+                box.innerHTML = '';
+                s.forEach(d => {
+                    const m = d.data();
+                    const isMe = m.uid === user.uid;
+                    box.innerHTML += `<div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}"><span class="text-[8px] text-zinc-600 uppercase font-bold">${m.name}</span><div class="p-3 rounded-xl text-xs ${isMe ? 'bg-blue-600' : 'bg-zinc-900'}">${m.text}</div></div>`;
+                });
+                box.scrollTop = box.scrollHeight;
+            });
+            document.getElementById('chat-form').onsubmit = async (ev) => {
+                ev.preventDefault();
+                const i = document.getElementById('chat-in');
+                if (!i.value) return;
+                await addDoc(collection(db, 'artifacts', 'poyraz-arama', 'public', 'data', 'rooms', r, 'messages'), { text: i.value, name: user.displayName, uid: user.uid, timestamp: serverTimestamp() });
+                i.value = '';
+            };
+        } catch (e) { toast("İzin hatası!"); }
+    };
+
+    document.getElementById('m-mic').onclick = () => { stream.getAudioTracks()[0].enabled = !stream.getAudioTracks()[0].enabled; document.getElementById('m-mic').classList.toggle('bg-red-600'); };
+    document.getElementById('m-cam').onclick = () => { stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled; document.getElementById('m-cam').classList.toggle('bg-red-600'); };
+    document.getElementById('m-end').onclick = () => location.reload();
+</script>
+</body> </html>
